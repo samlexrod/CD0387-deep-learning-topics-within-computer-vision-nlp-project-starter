@@ -9,12 +9,19 @@ import torchvision.models as models
 import torchvision.transforms as transforms
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, TensorDataset
+from torchvision.models import ResNet18_Weights
 import boto3
 from PIL import Image
 import argparse
 import json
 import os
 from tqdm import tqdm
+import shutil
+from time import sleep
+from io import BytesIO
+
+from PIL import ImageFile
+Image.LOAD_TRUNCATED_IMAGES = True
 
 s3 = boto3.client('s3', verify=True)
 
@@ -54,7 +61,7 @@ def train(model, train_loader, criterion, optimizer, epoch):
     optimizer: The optimizer to use
     epoch: The current epoch number
     '''
-    for batch_idx, (data, target) in enumerate(train_loader): # iterate over the training data
+    for batch_idx, (data, target) in tqdm(enumerate(train_loader)): # iterate over the training data
         optimizer.zero_grad() # zero the gradients for this batch to avoid accumulation of gradients from previous batches
         output = model(data) # get the model's prediction
         loss = criterion(output, target)  # use the criterion to calculate the loss
@@ -65,7 +72,7 @@ def train(model, train_loader, criterion, optimizer, epoch):
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.item()))
     
-def net(freeze_layers=True):
+def net(num_classes, freeze_layers=True):
     '''
     This function initializes the model to be used for training. 
 
@@ -74,7 +81,7 @@ def net(freeze_layers=True):
     '''
     # Load a pretrained model
     print("-> Loading pretrained model...")
-    model = models.resnet18(pretrained=True)
+    model = models.resnet18(weights=ResNet18_Weights.DEFAULT)
 
     # Freeze the model's parameters
     if freeze_layers:
@@ -83,79 +90,168 @@ def net(freeze_layers=True):
             param.requires_grad = False # to freeze the pre-trained model's parameters
 
     # Replace the model's classifier with a new one
-    num_classes = 10
-    print(f"-> Replacing classifier with {num_classes} classes...")
+    num_classes = num_classes
+    print(f"-> Replacing pre-trained model classifier with {num_classes} classes...")
     model.fc = nn.Linear(model.fc.in_features, num_classes) # replace the classifier with a new one for 10 classes
     
     return model
-    
+
+
 def create_or_read_s3_manifest(bucket, prefix, manifest_file='manifest.json'):
+
+    # Debug only
+    # s3.delete_object(Bucket=bucket, Key=f'{prefix}/meta/{manifest_file}')
+
+    # To collect the number of classes
+    labels_set = set()
 
     # Check if manifest exists
     try:
         print("-> Loading manifest file...")
-        response = s3.get_object(Bucket=bucket, Key=f'{prefix}/{manifest_file}')
+        response = s3.get_object(Bucket=bucket, Key=f'{prefix}/meta/{manifest_file}')
         manifest = json.loads(response['Body'].read())
         print("-> Loaded an existing manifest file...")
 
-        return manifest
+        for image_meta in manifest:
+            labels_set.add(image_meta.get("label_numeric"))
+
+        num_classes = len(labels_set)
+        print(f"-> Identified {num_classes} classes for training...")
+
+        return manifest, num_classes
+        
     except s3.exceptions.NoSuchKey:
         print("-> Failed loading manifest file...")
         print("-> Creating a new manifest file...")
         manifest = []
 
+    # List all objects helper internal function
+    def _list_all_objects(bucket, prefix):
+        # Create a paginator for list_objects_v2
+        paginator = s3.get_paginator('list_objects_v2')
+        
+        # Use the paginator to iterate through all pages
+        all_objects = []
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            if 'Contents' in page:
+                all_objects.extend(page['Contents'])
+    
+        return all_objects
+    
     # Extract s3 metadata
-    response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
-    for item in response.get('Contents', []):
-        key = item['Key']
+    print(bucket, prefix)
+    all_objects = _list_all_objects(bucket, prefix)
+    for item in all_objects:
         key = item['Key']
         key_split = key.split("/")
-        training_type = key_split[1]
-        label_numeric = key_split[2].split(".")[0]
-        label_description = key_split[2].split(".")[1]
-        image_s3_path = "s3://" + os.path.join(bucket, key)
-
-        # Add to manifest
-        manifest.append({
-            "image_ebs_path": os.path.join("temp", key),
-            "image_s3_path": image_s3_path,
-            "training_type": training_type,
-            "label_numeric": label_numeric,
-            "label_description": label_description
-        })
+        processing_type = key_split[1]
+        try:
+            label_numeric = key_split[2].split(".")[0]
+            label_description = key_split[2].split(".")[1]
+            image_s3_path = "s3://" + os.path.join(bucket, key)
+        
+            # Add to manifest
+            manifest.append({
+                "image_ebs_path": os.path.join("temp", key),
+                "image_s3_path": image_s3_path,
+                "processing_type": processing_type,
+                "label_numeric": int(label_numeric)-1, # Re-encoding from 0-132
+                "label_description": label_description
+            })
+            labels_set.add(label_numeric)
+        except Exception as e:
+            pass
 
     # Write manifest to S3
-    s3_key_destination = f'{prefix}/{manifest_file}'
+    s3_key_destination = f'{prefix}/meta/{manifest_file}'
     s3.put_object(Bucket=bucket, Key=s3_key_destination, Body=json.dumps(manifest))
+
+    num_classes = len(labels_set)
+    print(f"-> Identified {num_classes} classes for training...")
     
-    return manifest
+    return manifest, num_classes
+
 
 def download_images_to_ebs(metadata):
-
     print("-> Downloading images to local storage (EBS)...")
+
+    # Debug only: Remove the "temp" directory if it exists
+    # if os.path.exists("temp"):
+    #     shutil.rmtree("temp")
+
+    fail_manifest = []
+    valid_metadata = []
 
     for image_meta in tqdm(metadata):
         image_s3_path = image_meta['image_s3_path']
         local_image_path = image_meta['image_ebs_path']
-        bucket = image_s3_path.split("/")[2]
+        bucket_name = image_s3_path.split("/")[2]
         image_s3_key = "/".join(image_s3_path.split("/")[3:])
 
         # Download the image from S3 if it doesn't already exist locally
         if not os.path.exists(local_image_path):
-            
             # Create the local directory if it doesn't exist
             local_dir = os.path.dirname(local_image_path)
             os.makedirs(local_dir, exist_ok=True)
 
-            response = s3.get_object(Bucket=bucket, Key=image_s3_key)
-            with open(local_image_path, 'wb') as f:
-                f.write(response['Body'].read())
+            # Fetch the image object from S3 to validate
+            response = s3.get_object(Bucket=bucket_name, Key=image_s3_key)
+            image_data = BytesIO(response['Body'].read())
+            
+            # Open with PIL and verify RGB channels
+            image = Image.open(image_data)
+            if image.mode != 'RGB':
+                fail_manifest.append({
+                    "image_s3_path": image_s3_path,
+                    "fail_reason": "Image is not RGB",
+                    "error_type": "ImageModeError"
+                })
+                print(f"-> Image {image_s3_path} is not RGB. Skipping...")
+                continue
+            elif image.mode == 'RGB':
+                try:
+                    image.verify()
 
-    print("-> All images downloaded to local storage (EBS).")
+                    # Reopen the image to reset the file pointer after verification
+                    image_data.seek(0)
+                    image = Image.open(image_data).convert('RGB')
+
+                    # Save the image locally
+                    image.save(local_image_path)
+
+                    # Save to valid metadata]
+                    valid_metadata.append(image_meta)
+                
+                except Exception as e:
+                    fail_manifest.append({
+                        "image_s3_path": image_s3_path,
+                        "fail_reason": "Corrupted image",
+                        "error_type": "ImageVerifyError"
+                    })
+                    print(f"-> Image {image_s3_path} is corrupted. Skipping...")
+                    continue
+
+    # Save the fail_manifest locally
+    fail_manifest_file = "fail_manifest.json"
+    if fail_manifest:
+        with open(fail_manifest_file, "w") as f:
+            json.dump(fail_manifest, f)
+
+        # Upload the fail_manifest.json to S3
+        s3_key_destination = f"data/meta/{fail_manifest_file}"
+        with open(fail_manifest_file, "rb") as f:
+            s3.put_object(Bucket=bucket_name, Key=s3_key_destination, Body=f)
+        print(f"-> Fail manifest uploaded to s3://{bucket_name}/{s3_key_destination}")
+
+    print("-> All images downloaded, and errors logged in fail_manifest.json if any.")
+
+    print("-> Returning a cleaned valid metadata for CustomDataset...")
+    return valid_metadata
+
 
 class CustomDataset(Dataset):
-    def __init__(self, metadata, transform=None, training_type='train'):
-        self.metadata = [item for item in metadata if item['training_type'] == training_type]
+    def __init__(self, metadata, transform=None, processing_type='train'):
+        self.metadata = [item for item in metadata if item['processing_type'] == processing_type]
         self.transform = transform
 
     def __len__(self):
@@ -163,19 +259,17 @@ class CustomDataset(Dataset):
 
     def __getitem__(self, idx):
         image_meta = self.metadata[idx]
-        image_s3_path = image_meta['image_s3_path']
-        bucket = image_s3_path.split("/")[2]
-        image_s3_key = "/".join(image_s3_path.split("/")[3:])
+        local_image_path = image_meta['image_ebs_path']
         label_numeric = int(image_meta['label_numeric'])
 
-        # Download the image from local storage (EBS)
-        local_image_path = image_meta['image_ebs_path']
-        image = Image.open(local_image_path).convert('RGB')  # Convert to RGB
-        
-        if self.transform:
-            image = self.transform(image)
+        image = Image.open(local_image_path)
 
-        return image, label_numeric
+        # Apply additional transformations if needed
+        if self.transform:
+            image_tensor = self.transform(image)
+
+        return image_tensor, label_numeric
+
 
 def create_data_loaders(metadata, batch_size, shuffle=True, num_workers=4):
     '''
@@ -191,16 +285,17 @@ def create_data_loaders(metadata, batch_size, shuffle=True, num_workers=4):
     train_loader: DataLoader for the training data
     test_loader: DataLoader for the test data
     '''
+
     transform = transforms.Compose([
-        transforms.Resize((224, 224)),  # Resize the image to 224x224
-        transforms.ToTensor(),          # Convert the image to a PyTorch tensor
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Normalize the image
+        transforms.Resize((224, 224)),  # Resize images to 224x224
+        transforms.ToTensor(),          # Convert to tensor
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Normalize
     ])
 
     # Create separate datasets for training and testing
     print("-> Creating custom data loaders...")
-    train_dataset = CustomDataset(metadata, transform=transform, training_type='train')
-    test_dataset = CustomDataset(metadata, transform=transform, training_type='test')
+    train_dataset = CustomDataset(metadata, transform=transform, processing_type='train')
+    test_dataset = CustomDataset(metadata, transform=transform, processing_type='test')
 
     # Create data loaders
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
@@ -209,10 +304,16 @@ def create_data_loaders(metadata, batch_size, shuffle=True, num_workers=4):
     return train_loader, test_loader
 
 def main(args):
+
+    # Get metadata
+    bucket = 'udacity-deeplearning-project'
+    prefix = 'data'
+    metadata, num_classes = create_or_read_s3_manifest(bucket, prefix)
+    
     '''
     TODO: Initialize a model by calling the net function
     '''
-    model=net(freeze_layers=True)
+    model=net(num_classes, freeze_layers=True)
     
     '''
     TODO: Create your loss and optimizer
@@ -229,17 +330,12 @@ def main(args):
         "SGD": optim.SGD(model.parameters(), lr=args.lr)
     }
     optimizer = optimizer_options[args.optimizer]
-    
-    # Get metadata
-    bucket = 'udacity-deeplearning-project'
-    prefix = 'data'
-    metadata = create_or_read_s3_manifest(bucket, prefix)
 
     # Download images to local storage (EBS)
-    download_images_to_ebs(metadata)
+    valid_metadata = download_images_to_ebs(metadata)
 
     # Load the data
-    train_loader, test_loader = create_data_loaders(metadata, args.batch_size, shuffle=args.shuffle, num_workers=args.num_workers)
+    train_loader, test_loader = create_data_loaders(valid_metadata, args.batch_size, shuffle=args.shuffle, num_workers=args.num_workers)
     
     print("*"*150)
     print("-> Starting model training...")
