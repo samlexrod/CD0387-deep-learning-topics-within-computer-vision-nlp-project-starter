@@ -289,16 +289,16 @@ if __name__=='__main__':
     '''
     TODO: Specify all the hyperparameters you need to use to train your model.
     '''
-    parser.add_argument('--batch_size', type=int, default=64, help='batch size for training')
+    parser.add_argument('--batch-size', type=int, default=64, help='batch size for training')
     parser.add_argument('--test-batch-size', type=int, default=1000, help='batch size for testing')
     parser.add_argument('--lr', type=float, default=0.01, help='learning rate')
     parser.add_argument('--epochs', type=int, default=10, help='number of epochs')
     parser.add_argument('--optimizer', type=str, default='Adadelta', help='optimizer to use')
     parser.add_argument('--criterion', type=str, default='nll_loss', help='loss criterion to use')
     parser.add_argument('--shuffle', type=bool, default=True, help='shuffle the training data')
-    parser.add_argument('--num_workers', type=int, default=4, help='number of workers for data loading')
+    parser.add_argument('--num-workers', type=int, default=4, help='number of workers for data loading')
     parser.add_argument('--path', type=str, default='model.pth', help='path to save the trained model')
-    parser.add_argument('--num_classes', type=int, default=133, help='number of classes in the dataset')    
+    parser.add_argument('--num-classes', type=int, default=133, help='number of classes in the dataset')    
     args=parser.parse_args()
 
     main(args)
