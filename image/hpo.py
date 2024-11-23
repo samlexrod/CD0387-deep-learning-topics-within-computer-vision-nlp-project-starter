@@ -7,7 +7,7 @@ import torch.optim as optim
 import torchvision
 import torchvision.models as models
 import torchvision.transforms as transforms
-import torch.nn.functional as F
+# import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 # from torchvision.models import ResNet18_Weights
 import boto3
@@ -270,7 +270,7 @@ def main(args):
     TODO: Create your loss and optimizer
     '''
     loss_criterion_options = {
-        "cross_entropy": F.cross_entropy
+        "cross_entropy": nn.CrossEntropyLoss()
         # Add more loss functions as needed
     }
     print(f"-> Using {args.criterion} loss criterion...")
