@@ -257,10 +257,13 @@ def main(args):
     '''
     model=net(args.num_classes, freeze_layers=True)
 
-    # Initialize the Deebbuer/Profiler hook
+    # Initialize the Debuger/Profiler hook
     hook = get_hook(create_if_not_exists=True)
+    print("*"*60)
     if hook:
-        print("-> Profiler hook created...")
+        print("-> USING DEBUGER/PROFILER...")
+    else:
+        print("-> USING LOCAL RUN...")
     # hook.register_hook(model)
     
     '''
@@ -287,7 +290,7 @@ def main(args):
     # Load the data
     train_loader, test_loader = create_data_loaders(valid_metadata, args.batch_size, shuffle=args.shuffle, num_workers=args.num_workers)
     
-    print("*"*150)
+    print("*"*60)
     print("-> Starting model training...")
     for epoch in range(1, args.epochs + 1):
         '''
