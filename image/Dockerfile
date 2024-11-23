@@ -1,7 +1,7 @@
 # SageMaker PyTorch image
 # FROM 763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-inference:2.5.1-cpu-py311-ubuntu22.04-sagemaker
 FROM 763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-training:1.5.1-cpu-py36-ubuntu16.04
-RUN pip install smdebug==1.0.12
+RUN pip install smdebug
 
 # Set the environment variable to include your code in the PATH
 ENV PATH="/opt/ml/code:${PATH}"
