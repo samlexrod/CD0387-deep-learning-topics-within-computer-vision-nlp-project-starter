@@ -39,6 +39,10 @@ def test(model, test_loader):
     with torch.no_grad(): # this disables gradient computation which is not needed for testing
         for data, target in test_loader: # iterate over the test data
             output = model(data) # get the model's prediction
+
+            # Ensure the model's output is compatible with the loss function
+            output = F.log_softmax(output, dim=1)  # Necessary for NLLLoss
+            
             test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
             pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item() # get the number of correct predictions
