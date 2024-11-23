@@ -25,7 +25,7 @@ Image.LOAD_TRUNCATED_IMAGES = True
 
 s3 = boto3.client('s3', verify=True)
 
-def test(model, test_loader):
+def test(model, test_loader, criterion):
     '''
     This function tests the model on the test data and prints the accuracy.
 
@@ -38,12 +38,8 @@ def test(model, test_loader):
     correct = 0
     with torch.no_grad(): # this disables gradient computation which is not needed for testing
         for data, target in test_loader: # iterate over the test data
-            output = model(data) # get the model's prediction
-
-            # Ensure the model's output is compatible with the loss function
-            output = F.log_softmax(output, dim=1)  # Necessary for NLLLoss
-            
-            test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+            output = model(data) # get the model's prediction            
+            test_loss += criterion(output, target, reduction='sum').item()  # sum up batch loss
             pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item() # get the number of correct predictions
 
@@ -251,7 +247,6 @@ def main(args):
     TODO: Create your loss and optimizer
     '''
     loss_criterion_options = {
-        "nll_loss": F.nll_loss,
         "cross_entropy": F.cross_entropy
     }
     loss_criterion = loss_criterion_options[args.criterion]
@@ -281,7 +276,7 @@ def main(args):
         '''
         TODO: Test the model to see its accuracy
         '''
-        test(model, test_loader)
+        test(model, test_loader, loss_criterion)
     
     '''
     TODO: Save the trained model
@@ -298,7 +293,7 @@ if __name__=='__main__':
     parser.add_argument('--lr', type=float, default=0.01, help='learning rate')
     parser.add_argument('--epochs', type=int, default=10, help='number of epochs')
     parser.add_argument('--optimizer', type=str, default='Adadelta', help='optimizer to use')
-    parser.add_argument('--criterion', type=str, default='nll_loss', help='loss criterion to use')
+    parser.add_argument('--criterion', type=str, default='cross_entropy', help='loss criterion to use')
     parser.add_argument('--shuffle', type=bool, default=True, help='shuffle the training data')
     parser.add_argument('--num-workers', type=int, default=4, help='number of workers for data loading')
     parser.add_argument('--path', type=str, default='model.pth', help='path to save the trained model')
