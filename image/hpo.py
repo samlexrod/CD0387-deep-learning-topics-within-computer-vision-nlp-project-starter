@@ -307,7 +307,10 @@ def main(args):
     '''
     TODO: Save the trained model
     '''
-    torch.save(model, args.path)
+    # Save the trained model
+    model_dir = os.environ.get('SM_MODEL_DIR', '/opt/ml/model')
+    torch.save(model, os.path.join(model_dir, 'model.pth'))
+
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description='Train dog breed classifier')
