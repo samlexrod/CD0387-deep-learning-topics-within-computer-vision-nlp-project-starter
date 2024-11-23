@@ -20,26 +20,35 @@ import shutil
 from time import sleep
 from io import BytesIO
 
+from smdebug import modes
+from smdebug.profiler.utils import str2bool
+from smdebug.pytorch import get_hook
+
 from PIL import ImageFile
 Image.LOAD_TRUNCATED_IMAGES = True
 
 s3 = boto3.client('s3', verify=True)
 
-def test(model, test_loader, criterion):
+def test(model, test_loader, criterion, hook):
     '''
     This function tests the model on the test data and prints the accuracy.
 
     Parameters:
     model: The model to test
     test_loader: The data loader for the test data
+    criterion: The loss criterion to use
+    hook: The hook to use for profiling
     '''
     model.eval()
+    if hook:
+        hook.set_mode(modes.EVAL)
+
     test_loss = 0
     correct = 0
     with torch.no_grad(): # this disables gradient computation which is not needed for testing
         for data, target in test_loader: # iterate over the test data
             output = model(data) # get the model's prediction            
-            test_loss += criterion(output, target, reduction='sum').item()  # sum up batch loss
+            test_loss += criterion(output, target).item()
             pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item() # get the number of correct predictions
 
@@ -50,7 +59,7 @@ def test(model, test_loader, criterion):
         100. * correct / len(test_loader.dataset)))
         
 
-def train(model, train_loader, criterion, optimizer, epoch):
+def train(model, train_loader, criterion, optimizer, epoch, hook):
     '''
     This function trains the model on the training data for each epoch.
 
@@ -61,6 +70,11 @@ def train(model, train_loader, criterion, optimizer, epoch):
     optimizer: The optimizer to use
     epoch: The current epoch number
     '''
+    model.train()
+    if hook:
+        hook.set_mode(modes.TRAIN)
+        hook.register_loss(criterion)  # Register loss function for monitoring
+
     for batch_idx, (data, target) in tqdm(enumerate(train_loader)): # iterate over the training data
         optimizer.zero_grad() # zero the gradients for this batch to avoid accumulation of gradients from previous batches
         output = model(data) # get the model's prediction
@@ -242,13 +256,21 @@ def main(args):
     TODO: Initialize a model by calling the net function
     '''
     model=net(args.num_classes, freeze_layers=True)
+
+    # Initialize the Deebbuer/Profiler hook
+    hook = get_hook(create_if_not_exists=True)
+    if hook:
+        print("-> Profiler hook created...")
+    # hook.register_hook(model)
     
     '''
     TODO: Create your loss and optimizer
     '''
     loss_criterion_options = {
         "cross_entropy": F.cross_entropy
+        # Add more loss functions as needed
     }
+    print(f"-> Using {args.criterion} loss criterion...")
     loss_criterion = loss_criterion_options[args.criterion]
 
     optimizer_options = {
@@ -256,6 +278,7 @@ def main(args):
         "Adam": optim.Adam(model.parameters(), lr=args.lr),
         "SGD": optim.SGD(model.parameters(), lr=args.lr)
     }
+    print(f"-> Using {args.optimizer} optimizer...")
     optimizer = optimizer_options[args.optimizer]
     
     # Validate the data prior to training
@@ -271,12 +294,12 @@ def main(args):
         TODO: Call the train function to start training your model
         Remember that you will need to set up a way to get training data from S3
         '''
-        train(model, train_loader, loss_criterion, optimizer, epoch=args.epochs)
+        train(model, train_loader, loss_criterion, optimizer, epoch, hook=hook)
     
         '''
         TODO: Test the model to see its accuracy
         '''
-        test(model, test_loader, loss_criterion)
+        test(model, test_loader, loss_criterion, hook=hook)
     
     '''
     TODO: Save the trained model
