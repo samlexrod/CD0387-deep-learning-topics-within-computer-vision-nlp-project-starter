@@ -21,7 +21,6 @@ from time import sleep
 from io import BytesIO
 
 from smdebug import modes
-from smdebug.profiler.utils import str2bool
 from smdebug.pytorch import get_hook
 
 from PIL import ImageFile
@@ -249,6 +248,21 @@ def create_validate_manifest():
 
     return valid_metadata 
 
+def save_torchscript_model(model, model_dir):
+    # Set the model to evaluation mode
+    model.eval()
+    
+    # Generate a dummy input that matches the input size of your model
+    dummy_input = torch.randn(1, 3, 224, 224)  # Adjust based on your input shape
+
+    # Convert the model to TorchScript using `torch.jit.trace`
+    traced_model = torch.jit.trace(model, dummy_input)
+
+    # Save the TorchScript model
+    torch.jit.save(traced_model, f"{model_dir}/model.pth")
+    print(f"TorchScript model saved to {model_dir}/model.pth")
+
+
 
 def main(args):
     
@@ -258,7 +272,10 @@ def main(args):
     model=net(args.num_classes, freeze_layers=True)
 
     # Initialize the Debuger/Profiler hook
-    hook = get_hook(create_if_not_exists=True)
+    try:
+        hook = get_hook(create_if_not_exists=True)
+    except:
+        hook = None
     print("*"*60)
     if hook:
         print("-> USING DEBUGER/PROFILER...")
@@ -309,7 +326,7 @@ def main(args):
     '''
     # Save the trained model
     model_dir = os.environ.get('SM_MODEL_DIR', '/opt/ml/model')
-    torch.save(model, os.path.join(model_dir, 'model.pth'))
+    save_torchscript_model(model, model_dir)
 
 
 if __name__=='__main__':
