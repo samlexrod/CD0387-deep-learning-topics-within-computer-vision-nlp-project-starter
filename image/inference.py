@@ -21,6 +21,11 @@ def preprocess_input(request_body, content_type="application/x-image"):
         raise ValueError(f"Unsupported content type: {content_type}")
 
 def input_fn(request_body, content_type):
+    
+    print("*"*60)
+    print("*"*60)
+    print(f"-> Pre-processing content type {content_type}") 
+    
     # Preprocess the input using the logic defined
     return preprocess_input(request_body, content_type)
 
