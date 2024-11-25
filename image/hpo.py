@@ -255,12 +255,25 @@ def save_torchscript_model(model, model_dir):
     # Generate a dummy input that matches the input size of your model
     dummy_input = torch.randn(1, 3, 224, 224)  # Adjust based on your input shape
 
-    # Convert the model to TorchScript using `torch.jit.trace`
-    traced_model = torch.jit.trace(model, dummy_input)
+    try:
+        # Convert the model to TorchScript using `torch.jit.trace`
+        traced_model = torch.jit.trace(model, dummy_input)
+    
+        # Save the TorchScript model
+        torch.jit.save(traced_model, f"{model_dir}/model.pth")
+        print(f"-> TorchScript model saved to {model_dir}/model.pth")
+    
+        # Test the saved TorchScript model by loading it
+        loaded_model = torch.jit.load(f"{model_dir}/model.pth")
+        print("-> TorchScript model loaded successfully for verification.")
 
-    # Save the TorchScript model
-    torch.jit.save(traced_model, f"{model_dir}/model.pth")
-    print(f"TorchScript model saved to {model_dir}/model.pth")
+        # Run a forward pass using dummy input to validate
+        loaded_model(dummy_input)
+        print("-> TorchScript model verification successful: Forward pass completed.")
+
+    except Exception as e:
+        print(f"-> Error saving or testing TorchScript model: {e}")
+        raise
 
 
 
