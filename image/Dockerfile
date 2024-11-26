@@ -9,9 +9,6 @@ ENV PATH="/opt/ml/code:${PATH}"
 # to determine our user code directory
 ENV SAGEMAKER_SUBMIT_DIRECTORY /opt/ml/code
 
-# Copy the inference script to the container
-COPY inference.py /opt/ml/code/inference.py
-
 # Copy the user code to the container
 COPY hpo.py /opt/ml/code/hpo.py
 
