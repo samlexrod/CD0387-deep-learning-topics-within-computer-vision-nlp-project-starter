@@ -86,37 +86,24 @@ def train(model, train_loader, criterion, optimizer, epoch, hook):
                 100. * batch_idx / len(train_loader), loss.item()))
     
 def net(num_classes, model_type="resnet18", freeze_layers=True):
-    '''
-    This function initializes the model to be used for training. 
-
-    Parameters:
-    freeze_layers: A boolean that determines whether to freeze the pre-trained model's parameters or not
-    '''
-    # Load a pretrained model
-    print("-> Loading pretrained model...")
-    # model = models.resnet18(weights=ResNet18_Weights.DEFAULT)
     if model_type == "resnet18":
         model = models.resnet18(pretrained=True)
-    elif model_type == "vgg16":
-        model = models.vgg16(pretrained=True)
+        if freeze_layers:
+            for param in model.parameters():
+                param.requires_grad = False
+        model.fc = nn.Linear(model.fc.in_features, num_classes)
+        for param in model.fc.parameters():  # Enable gradients for classifier
+            param.requires_grad = True
+    elif model_type == "mobilenetv2":
+        model = models.mobilenet_v2(pretrained=True)
+        if freeze_layers:
+            for param in model.parameters():
+                param.requires_grad = False
+        model.classifier[1] = nn.Linear(model.classifier[1].in_features, num_classes)
+        for param in model.classifier.parameters():
+            param.requires_grad = True
     else:
         raise ValueError(f"Unsupported model type: {model_type}")
-
-    # Freeze the model's parameters
-    if freeze_layers:
-        print("-> Freezing pre-trained model layers...")
-        for param in model.parameters():
-            param.requires_grad = False # to freeze the pre-trained model's parameters
-
-    # Replace the model's classifier head with a new one
-    num_classes = num_classes
-    print(f"-> Replacing pre-trained model classifier with {num_classes} classes...")
-    
-    if model_type == "resnet18":
-        model.fc = nn.Linear(model.fc.in_features, num_classes)
-    elif model_type == "vgg16":
-        model.classifier[6] = nn.Linear(4096, num_classes)
-    
     return model
 
 class CustomDataset(Dataset):
