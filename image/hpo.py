@@ -108,10 +108,14 @@ def net(num_classes, model_type="resnet18", freeze_layers=True):
         for param in model.parameters():
             param.requires_grad = False # to freeze the pre-trained model's parameters
 
-    # Replace the model's classifier with a new one
+    # Replace the model's classifier head with a new one
     num_classes = num_classes
     print(f"-> Replacing pre-trained model classifier with {num_classes} classes...")
-    model.fc = nn.Linear(model.fc.in_features, num_classes) # replace the classifier with a new one for 10 classes
+    
+    if model_type == "resnet18":
+        model.fc = nn.Linear(model.fc.in_features, num_classes)
+    elif model_type == "vgg16":
+        model.classifier[6] = nn.Linear(4096, num_classes)
     
     return model
 
