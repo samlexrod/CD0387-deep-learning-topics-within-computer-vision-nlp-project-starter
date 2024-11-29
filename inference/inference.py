@@ -3,18 +3,19 @@ import torch
 import torchvision.transforms as transforms
 from PIL import Image
 
-# Define your preprocessing logic
+# Define the transformation pipeline
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+])
+
 def preprocess_input(request_body, content_type="application/x-image"):
-    if content_type == "application/x-image":
-        # Load image
+    if content_type in ["application/x-image", "text/csv"]:
+        # Load the image from bytes
         image = Image.open(io.BytesIO(request_body)).convert("RGB")
         
-        # Apply transformations
-        transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-        ])
+        # Apply the transformations
         tensor = transform(image).unsqueeze(0)  # Add batch dimension
         return tensor
     else:
