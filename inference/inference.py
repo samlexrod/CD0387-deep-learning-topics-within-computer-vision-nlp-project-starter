@@ -39,7 +39,6 @@ def preprocess_input(request_body, content_type="application/x-image"):
 def input_fn(request_body, content_type):
     print("*"*60)
     print(f"-> Input content type {content_type}") 
-    print(f"Payload size: {sys.getsizeof(request_body)} bytes")
     print("*"*60)
     
     # Preprocess the input using the logic defined
@@ -67,15 +66,19 @@ def output_fn(prediction, accept="application/json"):
         str: JSON-encoded prediction with a flat structure.
     """
     try:
-        # Convert logits to probabilities
-        print(f"Predictions length {len(prediction)}")
-        print(f"Example of prediction outputs: {prediction}")
+        probabilities = prediction.softmax(dim=1)
 
-        predicted_class = prediction.argmax(dim=1).tolist()
+        predicted_class = prediction.argmax(dim=1).tolist()[0]
+        predicted_proabability = probabilities.max(dim=1).values.tolist()[0]
 
-        print(f"Example of predicted class: {predicted_class}")
+        response = {
+            "PredictedClassID": predicted_class,
+            "Probability": predicted_proabability
+        }
 
-        return json.dumps(predicted_class)  # Array of arrays of numbers
+        print(f"Example of prediction: {response}")
+
+        return json.dumps(response)
     except Exception as e:
         raise ValueError(f"Error in output_fn: {str(e)}") from e
 
