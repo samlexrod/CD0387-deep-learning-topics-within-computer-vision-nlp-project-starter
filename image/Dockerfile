@@ -10,10 +10,10 @@ ENV PATH="/opt/ml/code:${PATH}"
 ENV SAGEMAKER_SUBMIT_DIRECTORY /opt/ml/code
 
 # Copy the user code to the container
-COPY hpo.py /opt/ml/code/hpo.py
+COPY hpo-container.py /opt/ml/code/hpo-container.py
 
 # Set the working directory
 WORKDIR /opt/ml/code
 
 # Define the entry point for the container
-ENV SAGEMAKER_PROGRAM hpo.py
+ENV SAGEMAKER_PROGRAM hpo-container.py
