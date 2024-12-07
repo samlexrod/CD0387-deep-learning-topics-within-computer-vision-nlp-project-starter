@@ -85,29 +85,25 @@ def train(model, train_loader, criterion, optimizer, epoch, hook):
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.item()))
     
-def net(num_classes, freeze_layers=True):
-    '''
-    This function initializes the model to be used for training. 
-
-    Parameters:
-    freeze_layers: A boolean that determines whether to freeze the pre-trained model's parameters or not
-    '''
-    # Load a pretrained model
-    print("-> Loading pretrained model...")
-    # model = models.resnet18(weights=ResNet18_Weights.DEFAULT)
-    model = models.resnet18(pretrained=True)
-
-    # Freeze the model's parameters
-    if freeze_layers:
-        print("-> Freezing pre-trained model layers...")
-        for param in model.parameters():
-            param.requires_grad = False # to freeze the pre-trained model's parameters
-
-    # Replace the model's classifier with a new one
-    num_classes = num_classes
-    print(f"-> Replacing pre-trained model classifier with {num_classes} classes...")
-    model.fc = nn.Linear(model.fc.in_features, num_classes) # replace the classifier with a new one for 10 classes
-    
+def net(num_classes, model_type="resnet18", freeze_layers=True):
+    if model_type == "resnet18":
+        model = models.resnet18(pretrained=True)
+        if freeze_layers:
+            for param in model.parameters():
+                param.requires_grad = False
+        model.fc = nn.Linear(model.fc.in_features, num_classes)
+        for param in model.fc.parameters():  # Enable gradients for classifier
+            param.requires_grad = True
+    elif model_type == "mobilenetv2":
+        model = models.mobilenet_v2(pretrained=True)
+        if freeze_layers:
+            for param in model.parameters():
+                param.requires_grad = False
+        model.classifier[1] = nn.Linear(model.classifier[1].in_features, num_classes)
+        for param in model.classifier.parameters():
+            param.requires_grad = True
+    else:
+        raise ValueError(f"Unsupported model type: {model_type}")
     return model
 
 class CustomDataset(Dataset):
@@ -255,12 +251,25 @@ def save_torchscript_model(model, model_dir):
     # Generate a dummy input that matches the input size of your model
     dummy_input = torch.randn(1, 3, 224, 224)  # Adjust based on your input shape
 
-    # Convert the model to TorchScript using `torch.jit.trace`
-    traced_model = torch.jit.trace(model, dummy_input)
+    try:
+        # Convert the model to TorchScript using `torch.jit.trace`
+        traced_model = torch.jit.trace(model, dummy_input)
+    
+        # Save the TorchScript model
+        torch.jit.save(traced_model, f"{model_dir}/model.pth")
+        print(f"-> TorchScript model saved to {model_dir}/model.pth")
+    
+        # Test the saved TorchScript model by loading it
+        loaded_model = torch.jit.load(f"{model_dir}/model.pth")
+        print("-> TorchScript model loaded successfully for verification.")
 
-    # Save the TorchScript model
-    torch.jit.save(traced_model, f"{model_dir}/model.pth")
-    print(f"TorchScript model saved to {model_dir}/model.pth")
+        # Run a forward pass using dummy input to validate
+        loaded_model(dummy_input)
+        print("-> TorchScript model verification successful: Forward pass completed.")
+
+    except Exception as e:
+        print(f"-> Error saving or testing TorchScript model: {e}")
+        raise
 
 
 
@@ -269,7 +278,9 @@ def main(args):
     '''
     TODO: Initialize a model by calling the net function
     '''
-    model=net(args.num_classes, freeze_layers=True)
+    print(f"-> Selected model type: {args.model_type}")
+    model = net(args.num_classes, model_type=args.model_type, freeze_layers=True)
+
 
     # Initialize the Debuger/Profiler hook
     try:
@@ -334,6 +345,7 @@ if __name__=='__main__':
     '''
     TODO: Specify all the hyperparameters you need to use to train your model.
     '''
+    parser.add_argument('--model-type', type=str, default='resnet18', help='model type to use (resnet18 or vgg16)')
     parser.add_argument('--batch-size', type=int, default=64, help='batch size for training')
     parser.add_argument('--test-batch-size', type=int, default=1000, help='batch size for testing')
     parser.add_argument('--lr', type=float, default=0.01, help='learning rate')
@@ -343,7 +355,8 @@ if __name__=='__main__':
     parser.add_argument('--shuffle', type=bool, default=True, help='shuffle the training data')
     parser.add_argument('--num-workers', type=int, default=4, help='number of workers for data loading')
     parser.add_argument('--path', type=str, default='model.pth', help='path to save the trained model')
-    parser.add_argument('--num-classes', type=int, default=133, help='number of classes in the dataset')    
+    parser.add_argument('--num-classes', type=int, default=133, help='number of classes in the dataset')   
+    
     args=parser.parse_args()
 
     main(args)
