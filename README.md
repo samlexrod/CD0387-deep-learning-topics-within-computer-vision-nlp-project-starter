@@ -100,6 +100,10 @@ print("Prediction result:", json.loads(result))
 
 **TODO** The submitted README file contains a screenshot of your hyperparameter tuning job that shows at least 2 different training runs and their results.
 
+![Hyperparameter Tuning](hyperparameter-run.png)
+![Hyperparameter Tuning](hyperparameter-tuning.png)
+![Hyperparameter Tuning](hyperparameter-tuning-best.png)
+
 ## Standout Suggestions
 **TODO (Optional):** This is where you can provide information about any standout suggestions that you have attempted.
 
