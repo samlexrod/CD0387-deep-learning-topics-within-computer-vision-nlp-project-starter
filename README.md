@@ -132,5 +132,18 @@ Here are the screenshots of the hyperparameter tuning job that shows at least 2 
 
 ## Standout Suggestions
 
-**TODO (Optional):** This is where you can provide information about any standout suggestions that you have attempted.
+### ECR Image hpo.py deployment
+The hpo.py script is deployed as an ECR image. The script is used to run the hyperparameter tuning job. The script is stored in an ECR repository and can be used to run the hyperparameter tuning job. The code used to deploy the ECR image is in the notebook. The ERC image includes the smddebug hook to capture the profiling and debugging information. Therefore the hpo.py and train_model.py scrips were implemented within the same ECR image. 
 
+### Multi-Model Endpoint
+The model is deployed as a multi-model endpoint. The multi-model endpoint is used to deploy multiple models as a single endpoint. The code used to create the multi-model endpoint is in the notebook. The multi-model endpoint is used to deploy the ResNet18 and MobileNetV2 models as a single endpoint. The models can be queried using the code provided above.
+
+### Batch Transform
+The ResNet18 model was used to run a batch transform job on the validation dataset only to conserve resources. However, the validation dataset will give us an idea of how well or how inbalanced the model is. The code used to run the batch transform job is in the notebook.
+
+### Model Explainability
+The model explainability using AWS Clarify was implemented using the results of the batch transform job. The code used to run the model explainability job is in the notebook. And the report is located here: [Clarify Report](clarify-report.html). 
+
+The ClassBalanceCount variance was expected to be small. However, the report shows high levels of inbalance. This indicates that we must either reduce the number of classes or increase the number of samples per class to improve the model's performance. We could also use model training techniques such as stratified sampling to improve the model's performance in which each subset of the data contains approximately the same distribution of the target variable as the original dataset during training and validation.
+
+The report shows high levels of class inbalance and missclassification. This is expected as the model was not trained for accuracy but rather to demonstrate the use of AWS SageMaker services.
