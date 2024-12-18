@@ -52,6 +52,12 @@ def test(model, test_loader, criterion, hook):
             correct += pred.eq(target.view_as(pred)).sum().item() # get the number of correct predictions
 
     test_loss /= len(test_loader.dataset) # calculate the average loss
+    accuracy = 100. * correct / len(test_loader.dataset)  # Compute accuracy
+
+    if hook:
+        # Convert accuracy to a torch.Tensor
+        accuracy_tensor = torch.tensor(accuracy, dtype=torch.float32)
+        hook.record_tensor_value("accuracy", accuracy_tensor)  # Log accuracy as a tensor
 
     print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
         test_loss, correct, len(test_loader.dataset),
@@ -72,7 +78,6 @@ def train(model, train_loader, criterion, optimizer, epoch, hook):
     model.train()
     if hook:
         hook.set_mode(modes.TRAIN)
-        hook.register_loss(criterion)  # Register loss function for monitoring
 
     for batch_idx, (data, target) in tqdm(enumerate(train_loader)): # iterate over the training data
         optimizer.zero_grad() # zero the gradients for this batch to avoid accumulation of gradients from previous batches
@@ -290,9 +295,10 @@ def main(args):
     print("*"*60)
     if hook:
         print("-> USING DEBUGER/PROFILER...")
+        hook.register_hook(model)
+        print("Registered collections:", hook.get_collections())
     else:
         print("-> USING LOCAL RUN...")
-    # hook.register_hook(model)
     
     '''
     TODO: Create your loss and optimizer
@@ -303,6 +309,8 @@ def main(args):
     }
     print(f"-> Using {args.criterion} loss criterion...")
     loss_criterion = loss_criterion_options[args.criterion]
+    if hook:
+        hook.register_loss(loss_criterion)  # Register loss function for monitoring, prior to epochs
 
     optimizer_options = {
         "Adadelta": optim.Adadelta(model.parameters(), lr=args.lr),
