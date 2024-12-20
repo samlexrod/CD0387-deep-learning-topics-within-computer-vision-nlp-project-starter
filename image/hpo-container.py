@@ -309,6 +309,8 @@ def main(args):
     }
     print(f"-> Using {args.criterion} loss criterion...")
     loss_criterion = loss_criterion_options[args.criterion]
+    if hook:
+        hook.register_loss(loss_criterion)
 
     optimizer_options = {
         "Adadelta": optim.Adadelta(model.parameters(), lr=args.lr),
